@@ -104,14 +104,11 @@ class OPENBRIDGE(asyncio.DatagramProtocol):
             self.transport = transport
             
     def dereg(self):
-        logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
+        pass
 
     def send_system(self, _packet):
         if _packet[:4] == 'DMRD':
-            #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
-            _packet = b''.join([_packet[:11], self._config['NETWORK_ID'], _packet[15:]])
-            #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
-            _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+            _packet = b''.join([_packet[:11], self._config['NETWORK_ID'], _packet[15:], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.sendto(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
             # logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
@@ -383,7 +380,7 @@ class HBSYSTEM(asyncio.DatagramProtocol):
         elif _command == RPTL:    # RPTLogin -- a repeater wants to login
             _peer_id = _data[4:8]
             # Check to see if we've reached the maximum number of allowed peers
-            if len(self._peers) < self._config['MAX_PEERS']:
+            if len(self._peers) <= self._config['MAX_PEERS']:
                 # Check for valid Radio ID
                 if acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']):
                     # Build the configuration data strcuture for the peer
@@ -412,11 +409,10 @@ class HBSYSTEM(asyncio.DatagramProtocol):
                         'SOFTWARE_ID': '',
                         'PACKAGE_ID': '',
                     }})
-                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
                     _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
                     self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
-                    logger.info('(%s) Sent Challenge Response to %s for login: %s', self._system, int_id(_peer_id), self._peers[_peer_id]['SALT'])
+                    logger.info('(%s) Repeater Logging in with Radio ID: %s Address: %s:%s - Challenge Sent: %s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1], self._peers[_peer_id]['SALT'])
                 else:
                     self.transport.sendto(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Invalid Login from Radio ID: %s Denied by Registation ACL', self._system, int_id(_peer_id))
@@ -596,7 +592,6 @@ class HBSYSTEM(asyncio.DatagramProtocol):
                 elif self._stats['CONNECTION'] == 'AUTHENTICATED': # If we've sent the login challenge...
                     _peer_id = _data[6:10]
                     if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
-                        logger.info('(%s) Repeater Authentication Accepted', self._system)
                         _config_packet =  b''.join([\
                                               self._config['RADIO_ID'],\
                                               self._config['CALLSIGN'],\
@@ -617,7 +612,7 @@ class HBSYSTEM(asyncio.DatagramProtocol):
 
                         self.send_master(b''.join([RPTC, _config_packet]))
                         self._stats['CONNECTION'] = 'CONFIG-SENT'
-                        logger.info('(%s) Repeater Configuration Sent', self._system)
+                        logger.info('(%s) Repeater Authentication Accepted and Configuration Sent', self._system)
                     else:
                         self._stats['CONNECTION'] = 'NO'
                         logger.error('(%s) Master ACK Contained wrong ID - Connection Reset', self._system)
@@ -625,15 +620,14 @@ class HBSYSTEM(asyncio.DatagramProtocol):
                 elif self._stats['CONNECTION'] == 'CONFIG-SENT': # If we've sent out configuration to the master
                     _peer_id = _data[6:10]
                     if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
-                        logger.info('(%s) Repeater Configuration Accepted', self._system)
                         if self._config['OPTIONS']:
                             self.send_master(b''.join([RPTO, self._config['RADIO_ID'], self._config['OPTIONS']]))
                             self._stats['CONNECTION'] = 'OPTIONS-SENT'
-                            logger.info('(%s) Sent options: (%s)', self._system, self._config['OPTIONS'])
+                            logger.info('(%s) Repeater configuration accepted, Sent options: (%s)', self._system, self._config['OPTIONS'])
                         else:
                             self._stats['CONNECTION'] = 'YES'
                             self._stats['CONNECTED'] = time()
-                            logger.info('(%s) Connection to Master Completed', self._system)
+                            logger.info('(%s) Repeater configuration accepted, connection complete', self._system)
                     else:
                         self._stats['CONNECTION'] = 'NO'
                         logger.error('(%s) Master ACK Contained wrong ID - Connection Reset', self._system)
@@ -641,10 +635,9 @@ class HBSYSTEM(asyncio.DatagramProtocol):
                 elif self._stats['CONNECTION'] == 'OPTIONS-SENT': # If we've sent out options to the master
                     _peer_id = _data[6:10]
                     if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
-                        logger.info('(%s) Repeater Options Accepted', self._system)
+                        logger.info('(%s) Repeater options accepted, connection complete', self._system)
                         self._stats['CONNECTION'] = 'YES'
                         self._stats['CONNECTED'] = time()
-                        logger.info('(%s) Connection to Master Completed with options', self._system)
                     else:
                         self._stats['CONNECTION'] = 'NO'
                         logger.error('(%s) Master ACK Contained wrong ID - Connection Reset', self._system)
@@ -725,7 +718,6 @@ if __name__ == '__main__':
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018\n\tThe Founding Members of the K0USY Group. All rights reserved.\n')
-    logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):
@@ -740,9 +732,8 @@ if __name__ == '__main__':
 
     peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
 
-
+    # Becuase this version has no report server
     report_server = None
-    
     
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
@@ -760,9 +751,4 @@ if __name__ == '__main__':
                 transports[system], systems[system] = loop.run_until_complete(loop.create_datagram_endpoint(HBPfactory, local_addr=CONFIG['SYSTEMS'][system]['SOCK_ADDR']))
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
-
-    
-
-
     loop.run_forever()
-    #reactor.run()
