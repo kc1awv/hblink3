@@ -734,15 +734,15 @@ if __name__ == '__main__':
 
     # Becuase this version has no report server
     report_server = None
-    
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+    #asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
-    
+
     # HBlink instance creation
     logger.info('(GLOBAL) HBlink \'HBlink.py\' -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-            
+
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 OBPfactory = functools.partial(OPENBRIDGE, system, CONFIG, report_server)
                 transports[system], systems[system] = loop.run_until_complete(loop.create_datagram_endpoint(OBPfactory, local_addr=CONFIG['SYSTEMS'][system]['SOCK_ADDR']))
