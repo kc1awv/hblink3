@@ -70,6 +70,9 @@ __email__      = 'n0mjs@me.com'
 systems = {}
 transports = {}
 
+# Create the asyncio event loop that drives EVERYTHING
+#asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+loop = asyncio.get_event_loop()
 
 # Shut ourselves down gracefully by disconnecting from the masters and peers.
 def hblink_handler(_signal, _frame):
